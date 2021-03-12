@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 namespace Wwwision\GraphQL;
 
 use GraphQL\Type\Definition\ObjectType;
@@ -17,33 +19,40 @@ use Neos\Flow\Annotations as Flow;
  */
 class TypeResolver
 {
-    private const INITIALIZING = '__initializing__';
-
     /**
      * @var ObjectType[]
      */
-    private $types = [];
+    private $types;
 
     /**
-     * @param string $typeClassName
+     * @param string|array $typeClassConfiguration
+     * @param array $additionalArguments
      * @return ObjectType
      */
-    public function get($typeClassName)
+    public function get($typeClassConfiguration, ...$additionalArguments)
     {
-        if (!is_string($typeClassName)) {
-            throw new \InvalidArgumentException(sprintf('Expected string, got "%s"', is_object($typeClassName) ? get_class($typeClassName) : gettype($typeClassName)), 1460065671);
+        $originalTypeClassConfiguration = $typeClassConfiguration;
+        if (is_array($typeClassConfiguration)) {
+            $hash = md5(json_encode($typeClassConfiguration));
+            $typeClassName = reset($typeClassConfiguration);
+        } elseif (is_string($typeClassConfiguration)) {
+            $hash = md5($typeClassConfiguration);
+            $typeClassName = $typeClassConfiguration;
+        } else {
+            throw new \InvalidArgumentException('The Type classname can be of type string or an array of string');
         }
+
         if (!is_subclass_of($typeClassName, Type::class)) {
-            throw new \InvalidArgumentException(sprintf('The TypeResolver can only resolve types extending "GraphQL\Type\Definition\Type", got "%s"', $typeClassName), 1461436398);
+            throw new \InvalidArgumentException(sprintf('The TypeResolver can only resolve types extending "GraphQL\Type\Definition\Type", got "%s"', $typeClassConfiguration), 1461436398);
         }
-        if (!array_key_exists($typeClassName, $this->types)) {
-            // The following code seems weird but it is a way to detect circular dependencies (see
-            $this->types[$typeClassName] = self::INITIALIZING;
-            $this->types[$typeClassName] = new $typeClassName($this);
+        if (!isset($this->types[$hash])) {
+            // forward recursive requests of the same type to a closure to prevent endless loops
+            $this->types[$hash] = function () use ($originalTypeClassConfiguration, $additionalArguments) {
+                return $this->get($originalTypeClassConfiguration, ...$additionalArguments);
+            };
+
+            $this->types[$hash] = new $typeClassName($this, ...$additionalArguments);
         }
-        if ($this->types[$typeClassName] === self::INITIALIZING) {
-            throw new \RuntimeException(sprintf('The GraphQL Type "%s" seems to have circular dependencies. Please define the fields as callbacks to prevent this error.', $typeClassName), 1554382971);
-        }
-        return $this->types[$typeClassName];
+        return $this->types[$hash];
     }
 }
