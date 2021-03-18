@@ -5,7 +5,10 @@ namespace Wwwision\GraphQL;
 
 use GraphQL\Type\Definition\ObjectType;
 use GraphQL\Type\Definition\Type;
+use InvalidArgumentException;
 use Neos\Flow\Annotations as Flow;
+use Psr\Log\LoggerInterface;
+use Ttree\Headless\Types\TypeResolverBasedInterface;
 
 /**
  * A type resolver (aka factory) for GraphQL type definitions.
@@ -20,9 +23,15 @@ use Neos\Flow\Annotations as Flow;
 class TypeResolver
 {
     /**
-     * @var ObjectType[]
+     * @Flow\Inject(name="Neos.Flow:SystemLogger")
+     * @var LoggerInterface
      */
-    private $types;
+    protected $logger;
+
+    /**
+     * @var Type[]
+     */
+    private static array $types = [];
 
     /**
      * @param string|array $typeClassConfiguration
@@ -31,28 +40,48 @@ class TypeResolver
      */
     public function get($typeClassConfiguration, ...$additionalArguments)
     {
+        $beginAt = microtime(true);
+        $elapsed = function () use ($beginAt) {
+            return (microtime(true) - $beginAt) * 1000;
+        };
         $originalTypeClassConfiguration = $typeClassConfiguration;
+        $typeClassName = $this->getTypeClassName($typeClassConfiguration);
+
+        $hash = md5(json_encode([$typeClassConfiguration, $additionalArguments]));
+
+        $this->assertValidTypeClassName($typeClassName, $typeClassConfiguration);
+        $loggerDetails = function () use ($typeClassName, $hash, $elapsed): array {
+            return [$typeClassName, $hash, self::$types[$hash]->name, $elapsed()];
+        };
+        if (!(self::$types[$hash] ?? null) instanceof Type) {
+            if (in_array(TypeResolverBasedInterface::class, class_implements($typeClassName))) {
+                self::$types[$hash] = new $typeClassName($this, ...$additionalArguments);
+            } else {
+                self::$types[$hash] = new $typeClassName(is_array($originalTypeClassConfiguration) ? $originalTypeClassConfiguration : [], ...$additionalArguments);
+            }
+            $this->logger->info(vsprintf('TypeResolver: cache miss for %s with hash %s (type: %s) in %f ms.', $loggerDetails()));
+        } else {
+            $this->logger->info(vsprintf('TypeResolver: cache hit for %s with hash %s (type: %s) in %f ms.', $loggerDetails()));
+        }
+        return self::$types[$hash];
+    }
+
+    protected function getTypeClassName(&$typeClassConfiguration) {
         if (is_array($typeClassConfiguration)) {
-            $hash = md5(json_encode($typeClassConfiguration));
             $typeClassName = reset($typeClassConfiguration);
+            ksort($typeClassConfiguration);
         } elseif (is_string($typeClassConfiguration)) {
-            $hash = md5($typeClassConfiguration);
             $typeClassName = $typeClassConfiguration;
         } else {
-            throw new \InvalidArgumentException('The Type classname can be of type string or an array of string');
+            throw new InvalidArgumentException('The Type classname can be of type string or an array of string');
         }
+        return $typeClassName;
+    }
 
+    protected function assertValidTypeClassName(string $typeClassName, $typeClassConfiguration)
+    {
         if (!is_subclass_of($typeClassName, Type::class)) {
-            throw new \InvalidArgumentException(sprintf('The TypeResolver can only resolve types extending "GraphQL\Type\Definition\Type", got "%s"', $typeClassConfiguration), 1461436398);
+            throw new InvalidArgumentException(sprintf('The TypeResolver can only resolve types extending "GraphQL\Type\Definition\Type", got "%s"', $typeClassConfiguration), 1461436398);
         }
-        if (!isset($this->types[$hash])) {
-            // forward recursive requests of the same type to a closure to prevent endless loops
-            $this->types[$hash] = function () use ($originalTypeClassConfiguration, $additionalArguments) {
-                return $this->get($originalTypeClassConfiguration, ...$additionalArguments);
-            };
-
-            $this->types[$hash] = new $typeClassName($this, ...$additionalArguments);
-        }
-        return $this->types[$hash];
     }
 }
