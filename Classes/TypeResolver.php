@@ -6,6 +6,7 @@ namespace Wwwision\GraphQL;
 use GraphQL\Type\Definition\ObjectType;
 use GraphQL\Type\Definition\Type;
 use InvalidArgumentException;
+use Neos\ContentRepository\Domain\Model\NodeType;
 use Neos\Flow\Annotations as Flow;
 use Psr\Log\LoggerInterface;
 use Ttree\Headless\Types\TypeResolverBasedInterface;
@@ -35,10 +36,10 @@ class TypeResolver
 
     /**
      * @param string|array $typeClassConfiguration
-     * @param array $additionalArguments
+     * @param NodeType|null $nodeType
      * @return ObjectType
      */
-    public function get($typeClassConfiguration, ...$additionalArguments)
+    public function get($typeClassConfiguration, NodeType $nodeType = null)
     {
         $beginAt = microtime(true);
         $elapsed = function () use ($beginAt) {
@@ -47,7 +48,12 @@ class TypeResolver
         $originalTypeClassConfiguration = $typeClassConfiguration;
         $typeClassName = $this->getTypeClassName($typeClassConfiguration);
 
-        $hash = md5(json_encode([$typeClassConfiguration, $additionalArguments]));
+        if ($nodeType instanceof NodeType) {
+            $hash = md5(json_encode([$typeClassConfiguration, $nodeType->getName()]));
+        } else {
+            $hash = md5(json_encode([$typeClassConfiguration]));
+        }
+
 
         $this->assertValidTypeClassName($typeClassName, $typeClassConfiguration);
         $loggerDetails = function () use ($typeClassName, $hash, $elapsed): array {
@@ -55,14 +61,15 @@ class TypeResolver
         };
         if (!(self::$types[$hash] ?? null) instanceof Type) {
             if (in_array(TypeResolverBasedInterface::class, class_implements($typeClassName))) {
-                self::$types[$hash] = new $typeClassName($this, ...$additionalArguments);
+                self::$types[$hash] = new $typeClassName($this, $nodeType);
             } else {
-                self::$types[$hash] = new $typeClassName(is_array($originalTypeClassConfiguration) ? $originalTypeClassConfiguration : [], ...$additionalArguments);
+                self::$types[$hash] = new $typeClassName(is_array($originalTypeClassConfiguration) ? $originalTypeClassConfiguration : [], $nodeType);
             }
             $this->logger->info(vsprintf('TypeResolver: cache miss for %s with hash %s (type: %s) in %f ms.', $loggerDetails()));
         } else {
             $this->logger->info(vsprintf('TypeResolver: cache hit for %s with hash %s (type: %s) in %f ms.', $loggerDetails()));
         }
+        $this->logger->info(json_encode(self::$types[$hash]->config));
         return self::$types[$hash];
     }
 
