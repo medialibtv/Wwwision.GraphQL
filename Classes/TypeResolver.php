@@ -69,7 +69,6 @@ class TypeResolver
         } else {
             $this->logger->info(vsprintf('TypeResolver: cache hit for %s with hash %s (type: %s) in %f ms.', $loggerDetails()));
         }
-        $this->logger->info(json_encode(self::$types[$hash]->config));
         return self::$types[$hash];
     }
 
