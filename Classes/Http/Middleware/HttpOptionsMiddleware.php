@@ -2,6 +2,7 @@
 
 namespace Wwwision\GraphQL\Http\Middleware;
 
+use GuzzleHttp\Psr7\Response;
 use Neos\Flow\Annotations as Flow;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -27,15 +28,35 @@ class HttpOptionsMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $next): ResponseInterface
     {
         // no OPTIONS request => skip
-        if ($request->getMethod() !== 'OPTIONS') {
+        if (!in_array($request->getMethod(), ["OPTIONS", "POST"])) {
             return $next->handle($request);
         }
+
         $endpoint = ltrim($request->getUri()->getPath(), '\/');
+
         // no matching graphQL endpoint configured => skip
         if (!isset($this->endpoints[$endpoint])) {
             return $next->handle($request);
         }
+
+        $headers = [
+            'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Allow-Credentials' => true,
+            'Vary' => 'Accept-Encoding, Origin',
+            'Server' => 'Medialib CMS Content API',
+            'Access-Control-Max-Age' => 86400,
+            'Access-Control-Allow-Methods' => 'OPTIONS, GET, POST',
+            'Access-Control-Allow-Headers' => 'content-type, authorization, if-match, if-unmodified-since'
+        ];
+
+        if ($request->getMethod() === 'OPTIONS') {
+            return new Response(204, $headers);
+        }
+
         $response = $next->handle($request);
-        return $response->withHeader('Allow', 'GET, POST');
+        foreach ($headers as $headerName => $headerValue) {
+            $response = $response->withHeader($headerName, $headerValue);
+        }
+        return $response;
     }
 }
