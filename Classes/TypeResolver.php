@@ -66,8 +66,6 @@ class TypeResolver
                 self::$types[$hash] = new $typeClassName(is_array($originalTypeClassConfiguration) ? $originalTypeClassConfiguration : [], $nodeType);
             }
             $this->logger->info(vsprintf('TypeResolver: cache miss for %s with hash %s (type: %s) in %f ms.', $loggerDetails()));
-        } else {
-            $this->logger->info(vsprintf('TypeResolver: cache hit for %s with hash %s (type: %s) in %f ms.', $loggerDetails()));
         }
         return self::$types[$hash];
     }
