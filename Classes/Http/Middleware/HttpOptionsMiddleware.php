@@ -40,13 +40,14 @@ class HttpOptionsMiddleware implements MiddlewareInterface
         }
 
         $headers = [
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Credentials' => true,
+            // @todo #52 add a way to have a dynamic configuration here
+            'Access-Control-Allow-Origin' => 'https://medialib-ui.ttree.localhost',
+            'Access-Control-Allow-Credentials' => 'true',
             'Vary' => 'Accept-Encoding, Origin',
             'Server' => 'Medialib CMS Content API',
             'Access-Control-Max-Age' => 86400,
             'Access-Control-Allow-Methods' => 'OPTIONS, GET, POST',
-            'Access-Control-Allow-Headers' => 'content-type, authorization, if-match, if-unmodified-since'
+            'Access-Control-Allow-Headers' => 'content-type, authorization, cookie, if-match, if-unmodified-since'
         ];
 
         if ($request->getMethod() === 'OPTIONS') {
